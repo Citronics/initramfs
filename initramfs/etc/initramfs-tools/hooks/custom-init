@@ -1,0 +1,22 @@
+#!/bin/sh
+
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+echo "[hook] Replacing /init with custom version"
+cp /usr/share/citronics-initramfs/init "${DESTDIR}/init"
+cp /usr/share/citronics-initramfs/functions.sh "${DESTDIR}/functions.sh"
+chmod +x "${DESTDIR}/init"
+chmod +x "${DESTDIR}/functions.sh"
