@@ -4,5 +4,6 @@ Section: base
 Priority: optional
 Architecture: armhf
 Maintainer: info@citronics.eu
+Depends: initramfs-tools, busybox, kpartx
 Description: Custom initramfs-tools hooks and scripts for citronics boards
  This package installs custom hooks, modules, and scripts into initramfs-tools.
