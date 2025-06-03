@@ -15,7 +15,7 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-echo "[hook] Replacing /init with custom version"
+echo "[Hook] Replacing /init with custom version"
 cp /usr/share/citronics-initramfs/init "${DESTDIR}/init"
 cp /usr/share/citronics-initramfs/functions.sh "${DESTDIR}/functions.sh"
 chmod +x "${DESTDIR}/init"
