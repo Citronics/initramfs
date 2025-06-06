@@ -1,0 +1,14 @@
+# ...existing code...
+DESTDIR="/boot"
+# Example: Copy DTB for the current kernel version
+DTB_SRC="/usr/lib/linux-image-${version}/qcom-msm8974pro-fairphone-fp2.dtb"
+DTB_DST="${DESTDIR}/qcom-msm8974pro-fairphone-fp2.dtb"
+
+if [ -e "$DTB_SRC" ]; then
+    echo "[Hook] Copying DTB from $DTB_SRC to $DTB_DST"
+    cp "$DTB_SRC" "$DTB_DST"
+else
+    echo "[Hook] Warning: DTB not found at $DTB_SRC"
+fi
+
+# ...existing code...

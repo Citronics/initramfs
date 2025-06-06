@@ -1,0 +1,9 @@
+#!/bin/sh
+# filepath: /etc/initramfs/post-update.d/rename-initramfs
+
+set -e
+
+# $1 is the kernel version, $2 is the initramfs path
+if [ -n "$2" ] && [ -f "$2" ]; then
+    mv "$2" "/boot/initramfs.gz"
+fi

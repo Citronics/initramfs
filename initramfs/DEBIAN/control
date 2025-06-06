@@ -4,6 +4,6 @@ Section: base
 Priority: optional
 Architecture: armhf
 Maintainer: info@citronics.eu
-Depends: initramfs-tools, busybox, kpartx, unudhcpd, linux-image-6.11.4-citronics-lemon
+Depends: initramfs-tools, busybox, kpartx, unudhcpd, linux-headers-6.11.4-citronics-lemon, linux-image-6.11.4-citronics-lemon
 Description: Custom initramfs-tools hooks and scripts for citronics boards
  This package installs custom hooks, modules, and scripts into initramfs-tools.
