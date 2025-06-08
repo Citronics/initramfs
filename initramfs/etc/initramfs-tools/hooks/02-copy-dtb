@@ -10,5 +10,3 @@ if [ -e "$DTB_SRC" ]; then
 else
     echo "[Hook] Warning: DTB not found at $DTB_SRC"
 fi
-
-# ...existing code...

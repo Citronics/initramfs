@@ -15,6 +15,7 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-echo "[Hook] Add kpartx and its dependencies"
-copy_exec /sbin/kpartx /sbin
-copy_exec /sbin/dmsetup /sbin
+# Symlink all available applets in /bin
+for applet in $(/bin/busybox --list); do
+    ln -sf busybox "${DESTDIR}/bin/${applet}"
+done

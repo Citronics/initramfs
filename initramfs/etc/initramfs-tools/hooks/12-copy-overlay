@@ -1,0 +1,24 @@
+#!/bin/sh
+
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case $1 in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+echo "[Hook] Copy overlay files to initramfs"
+cp -R /usr/share/citronics-initramfs/etc/* "${DESTDIR}/etc/"
+mkdir -p "${DESTDIR}/usr/share/deviceinfo/"
+cp /usr/share/deviceinfo/deviceinfo "${DESTDIR}/usr/share/deviceinfo/deviceinfo"
+mkdir -p "${DESTDIR}/usr/share/misc/"
+cp /usr/share/citronics-initramfs/misc/source_deviceinfo "${DESTDIR}/usr/share/misc/source_deviceinfo"
+cp /usr/share/citronics-initramfs/lib/modules/initramfs.load "${DESTDIR}/lib/modules/initramfs.load"
