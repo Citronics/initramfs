@@ -1,0 +1,7 @@
+PRETTY_NAME="citronics alpha"
+NAME="citronics"
+VARIANT="initrd"
+VERSION_ID="alpha"
+VERSION="alpha"
+ID="citros"
+ID_LIKE="debian"
