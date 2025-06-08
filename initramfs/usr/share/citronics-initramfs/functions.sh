@@ -33,53 +33,6 @@ mount_subpartitions() {
     sleep 5
 }
 
-# Redirect stdout and stderr to logfile
-setup_log() {
-    local console
-    console="$(cat /sys/devices/virtual/tty/console/active)"
-
-    # Stash fd1/2 so we can restore them before switch_root, but only if the
-    # console is not null
-    if [ -n "$console" ] ; then
-        # The kernel logs go to the console, and we log to the kernel. Avoid printing everything
-        # twice.
-        console="/dev/null"
-        exec 3>&1 4>&2
-    else
-        # Setting console=null is a trick used on quite a few citros devices. However it is generally a really
-        # bad idea since it makes it impossible to debug kernel panics, and it makes our job logging in the
-        # initramfs a lot harder. We ban this in pmaports but some (usually android) bootloaders like to add it
-        # anyway. We ought to have some special handling here to use /dev/zero for stdin instead
-        # to avoid weird bugs in daemons that read from stdin (e.g. syslog)
-        # See related: https://gitlab.postmarketos.org/citrOS/pmaports/-/issues/2989
-        console="/dev/$(echo "$deviceinfo_getty" | cut -d';' -f1)"
-        if ! [ -e "$console" ]; then
-            console="/dev/null"
-        fi
-    fi
-
-    # Disable kmsg ratelimiting for userspace (it gets re-enabled again before switch_root)
-    echo on > /proc/sys/kernel/printk_devkmsg
-
-    # Spawn syslogd to log to the kernel
-    # syslog will try to read from stdin over and over which can pin a cpu when stdin is /dev/null
-    # By connecting /dev/zero to stdin/stdout/stderr, we make sure that syslogd
-    # isn't blocked when a console isn't available.
-    syslogd -K < /dev/zero >/dev/zero 2>&1
-
-    local pmsg="/dev/pmsg0"
-
-    if ! [ -e "$pmsg" ]; then
-        pmsg="/dev/null"
-    fi
-
-    # Redirect to a subshell which outputs to the logfile as well
-    # as to the kernel ringbuffer and pstore (if available).
-    # Process substitution is technically non-POSIX, but is supported by busybox
-    # shellcheck disable=SC3001
-    exec > >(tee /citros_init.log "$pmsg" "$console" | logger -t "$LOG_PREFIX" -p user.info) 2>&1
-}
-
 mount_proc_sys_dev() {
     # mdev
     mkdir -p /proc /sys /dev /run
@@ -166,13 +119,13 @@ debug_shell() {
 	EOF
 
 	cat <<-EOF > /sbin/citros_getty
-	#!/bin/sh
-	/bin/sh -l
+	#!/usr/bin/sh
+	/usr/bin/sh -l
 	EOF
 	chmod +x /sbin/citros_getty
 
 	cat <<-EOF > /sbin/citros_logdump
-	#!/bin/sh
+	#!/usr/bin/sh
 	echo "Dumping logs, check for a new mass storage device"
 	touch /tmp/dump_logs
 	EOF
@@ -383,7 +336,7 @@ run_getty() {
             # shellcheck disable=SC3061
             read -r < /dev/ttyGS0
         fi
-        while /sbin/getty -n -l /sbin/citros_getty "$1" 115200 vt100; do
+        while /usr/bin/getty -n -l /sbin/citros_getty "$1" 115200 vt100; do
             sleep 0.2
         done
     } &

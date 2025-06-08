@@ -1,7 +1,6 @@
-#!/bin/sh
+#!/usr/bin/sh
 # shellcheck disable=SC1091
 
-# Export all variables so they're available in /init_2nd.sh
 set -a
 
 LOG_PREFIX="[CitrOS-rd]"
@@ -19,15 +18,10 @@ INITRAMFS_PKG_VERSION="0.0.1"
 
 echo "Starting initramfs..."
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-/bin/busybox --install -s
-/bin/busybox-extras --install -s
 
 mkdir -p /tmp /boot /sysroot
 echo "Mounting proc sys dev..."
 mount_proc_sys_dev
-
-echo "Setup logging..."
-setup_log
 
 echo "Setup firmware path..."
 setup_firmware_path
@@ -49,8 +43,8 @@ if [ -n "$rootfs" ]; then
     echo "Mounting rootfs partition..."
     mount_rootfs
 
-    if mountpoint -q /sysroot; then
-    bootpart=$(get_kernel_param "bootpart")
+    if grep -q " /sysroot " /proc/mounts; then
+        bootpart=$(get_kernel_param "bootpart")
         if [ -n "$bootpart" ]; then
             echo "Mounting boot partition..."
             mount_boot_partition
