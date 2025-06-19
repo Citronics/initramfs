@@ -18,3 +18,6 @@ esac
 echo "[Hook] Add kpartx and its dependencies"
 copy_exec /sbin/kpartx /sbin
 copy_exec /sbin/dmsetup /sbin
+copy_exec /sbin/growpart /sbin
+copy_exec /sbin/resize2fs /sbin
+copy_exec /lib/arm-linux-gnueabihf/libudev.so.1

@@ -40,6 +40,9 @@ if [ -n "$rootfs" ]; then
     echo "Mapping subpartitions..."
     map_subpartitions
 
+    echo "Resize rootfs partition if required..."
+    resize_root_partition
+
     echo "Mounting rootfs partition..."
     mount_rootfs
 
