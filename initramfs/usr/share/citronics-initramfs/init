@@ -1,11 +1,9 @@
-#!/usr/bin/sh
+#!/sbin/busybox sh
 # shellcheck disable=SC1091
 
 set -a
 
-LOG_PREFIX="[CitrOS-rd]"
-
-[ -e /hooks/10-verbose-initfs.sh ] && set -x
+LOG_PREFIX="[Citronics]"
 
 [ -e /etc/unudhcpd.conf ] && . /etc/unudhcpd.conf
 . ./functions.sh
@@ -16,54 +14,51 @@ VERSION="${VERSION:-unknown}"
 
 INITRAMFS_PKG_VERSION="0.0.1"
 
-echo "Starting initramfs..."
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+/sbin/busybox --install -s
 
 mkdir -p /tmp /boot /sysroot
-echo "Mounting proc sys dev..."
 mount_proc_sys_dev
+setup_log
 
-echo "Setup firmware path..."
+echo_kmsg "Setup firmware path..."
 setup_firmware_path
 
-echo "Launch mdev..."
+echo_kmsg "Launch mdev..."
 setup_mdev
 
-echo "Load relevant modules...."
+echo_kmsg "Load relevant modules...."
 load_modules /lib/modules/initramfs.load
 
-echo "Kill mdev since it's not needed anymore..."
+echo_kmsg "Kill mdev since it's not needed anymore..."
 kill mdev 2>/dev/null
 
 rootfs=$(get_kernel_param "rootfs")
 if [ -n "$rootfs" ]; then
-    echo "Mapping subpartitions..."
+    echo_kmsg "Mapping subpartitions..."
     map_subpartitions
 
-    echo "Resize rootfs partition if required..."
-    resize_root_partition
-
-    echo "Mounting rootfs partition..."
+    echo_kmsg "Mounting rootfs partition..."
     mount_rootfs
 
     if grep -q " /sysroot " /proc/mounts; then
         bootpart=$(get_kernel_param "bootpart")
         if [ -n "$bootpart" ]; then
-            echo "Mounting boot partition..."
+            echo_kmsg "Mounting boot partition..."
             mount_boot_partition
         else
-            echo "No bootpart parameter found, skipping boot partition mounting."
+            echo_kmsg "No bootpart parameter found, skipping boot partition mounting."
         fi
-        echo "Restore consoles to original state..."
+        echo_kmsg "Restore consoles to original state..."
         restore_consoles
 
-        echo "Switching to /sysroot"
+        echo_kmsg "Switching to /sysroot"
         exec switch_root /sysroot /sbin/init
     else
-        echo "Rootfs not mounted, launching debug_console..."
+        echo_kmsg "Rootfs not mounted, launching debug_console..."
     fi
 else
-    echo "No rootfs parameter found, skipping rootfs mounting."
+    echo_kmsg "No rootfs parameter found, skipping rootfs mounting."
 fi
 
 fail_halt_boot

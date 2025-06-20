@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/sbin/busybox sh
 # This file will be in /init_functions.sh inside the initramfs.
 
 # clobbering variables by not setting them if they have
@@ -17,6 +17,38 @@ get_kernel_param() {
     sed -n "s/.*\b${param}=\([^ ]*\).*/\1/p" /proc/cmdline
 }
 
+echo_kmsg() {
+    echo "$LOG_PREFIX $*" > /dev/kmsg
+}
+
+setup_log() {
+    local console
+    local log_targets
+    console="$(cat /sys/devices/virtual/tty/console/active)"
+    log_targets="/citronics_init.log"
+    # If we have an active console, the kernel will be logging there.
+    if [ -n "$console" ] ; then
+        exec 3>&1 4>&2
+    else
+        console="/dev/$(echo "$deviceinfo_getty" | cut -d';' -f1)"
+        if [ -e "$console" ]; then
+            log_targets="$log_targets $console"
+        fi
+        echo_kmsg "Logging started" \
+            | tee "$console" > /dev/tty0
+        log_targets="$log_targets /dev/tty0"
+    fi
+    # Disable kmsg ratelimiting for userspace (it gets re-enabled again before switch_root)
+    echo on > /proc/sys/kernel/printk_devkmsg
+    syslogd -K < /dev/zero >/dev/zero 2>&1
+    # Redirect to a subshell which outputs to the logfile as well
+    # as to the kernel ringbuffer and pstore (if available).
+    # Process substitution is technically non-POSIX, but is supported by busybox
+    # We are intentionally word-splitting $log_targets into multiple arguments.
+    # shellcheck disable=SC3001,SC2086
+    exec > >(tee $log_targets | logger -t "$LOG_PREFIX" -p user.info) 2>&1
+}
+
 mount_subpartitions() {
     local superpartition
     superpartition=$(get_kernel_param "superpartition")
@@ -24,11 +56,11 @@ mount_subpartitions() {
     local rootfs_subpartition
     rootfs_subpartition=$(get_kernel_param "rootfs_subpartition")
 
-    echo "Attempting to map subpartitions of $superpartition"
+    echo_kmsg "Attempting to map subpartitions of $superpartition"
 
     kpartx -afs "$superpartition"
 
-    echo "Attempting to mount /dev/mapper/$rootfs_subpartition"
+    echo_kmsg "Attempting to mount /dev/mapper/$rootfs_subpartition"
     mount "/dev/mapper/$rootfs_subpartition" /sysroot
     sleep 5
 }
@@ -36,10 +68,10 @@ mount_subpartitions() {
 mount_proc_sys_dev() {
     # mdev
     mkdir -p /proc /sys /dev /run
-    mount -t proc -o nodev,noexec,nosuid proc /proc || echo "Couldn't mount /proc"
-    mount -t sysfs -o nodev,noexec,nosuid sysfs /sys || echo "Couldn't mount /sys"
-    mount -t devtmpfs -o mode=0755,nosuid dev /dev || echo "Couldn't mount /dev"
-    mount -t tmpfs -o nosuid,nodev,mode=0755 run /run || echo "Couldn't mount /run"
+    mount -t proc -o nodev,noexec,nosuid proc /proc || echo_kmsg "Couldn't mount /proc"
+    mount -t sysfs -o nodev,noexec,nosuid sysfs /sys || echo_kmsg "Couldn't mount /sys"
+    mount -t devtmpfs -o mode=0755,nosuid dev /dev || echo_kmsg "Couldn't mount /dev"
+    mount -t tmpfs -o nosuid,nodev,mode=0755 run /run || echo_kmsg "Couldn't mount /run"
 
     mkdir /config
     mount -t configfs -o nodev,noexec,nosuid configfs /config
@@ -53,13 +85,13 @@ mount_proc_sys_dev() {
 }
 
 setup_firmware_path() {
-    # Add the citrOS-specific path to the firmware search paths.
+    # Add the citronics-specific path to the firmware search paths.
     # This should be sufficient on kernel 3.10+, before that we need
     # the kernel calling udev (and in our case /usr/lib/firmwareload.sh)
     # to load the firmware for the kernel.
     SYS=/sys/module/firmware_class/parameters/path
     if ! [ -e "$SYS" ]; then
-        echo "Kernel does not support setting the firmware image search path. Skipping."
+        echo_kmsg "Kernel does not support setting the firmware image search path. Skipping."
         return
     fi
     # shellcheck disable=SC3037
@@ -80,14 +112,14 @@ load_modules() {
 
 fail_halt_boot() {
     debug_shell
-    echo "Looping forever"
+    echo_kmsg "Looping forever"
     while true; do
         sleep 1
     done
 }
 
 debug_shell() {
-    echo "Entering debug shell"
+    echo_kmsg "Entering debug shell"
 
     # mount pstore, if possible
     if [ -d /sys/fs/pstore ]; then
@@ -102,14 +134,12 @@ debug_shell() {
     start_unudhcpd
 
 	cat <<-EOF > /README
-	citrOS debug shell
+	citronics debug shell
 
 	  Device: $deviceinfo_name ($deviceinfo_codename)
 	  Kernel: $(uname -r)
 	  OS ver: $VERSION
 	  initrd: $INITRAMFS_PKG_VERSION
-
-	Read the initramfs log with 'cat /citros_init.log'.
 	EOF
 
 	# Display some info
@@ -118,18 +148,18 @@ debug_shell() {
 	. /functions.sh
 	EOF
 
-	cat <<-EOF > /sbin/citros_getty
+	cat <<-EOF > /sbin/citronics_getty
 	#!/usr/bin/sh
 	/usr/bin/sh -l
 	EOF
-	chmod +x /sbin/citros_getty
+	chmod +x /sbin/citronics_getty
 
-	cat <<-EOF > /sbin/citros_logdump
+	cat <<-EOF > /sbin/citronics_logdump
 	#!/usr/bin/sh
 	echo "Dumping logs, check for a new mass storage device"
 	touch /tmp/dump_logs
 	EOF
-	chmod +x /sbin/citros_logdump
+	chmod +x /sbin/citronics_logdump
 
     # Get the console (ttyX) associated with /dev/console
     local active_console
@@ -171,7 +201,7 @@ debug_shell() {
     setup_usb_configfs_udc
     # Spawn telnetd for those who prefer it. ACM gadget mode is not
     # supported on some old kernels so this exists as a fallback.
-    telnetd -b "${HOST_IP}:23" -l /sbin/citros_getty &
+    telnetd -b "${HOST_IP}:23" -l /sbin/citronics_getty &
 }
 
 setup_usb_network() {
@@ -179,7 +209,7 @@ setup_usb_network() {
 	_marker="/tmp/_setup_usb_network"
 	[ -e "$_marker" ] && return
 	touch "$_marker"
-	echo "Setup usb network"
+	echo_kmsg "Setup usb network"
 	modprobe libcomposite
 	setup_usb_network_configfs
 }
@@ -189,12 +219,12 @@ setup_usb_network_configfs() {
 	local skip_udc="$1"
 
 	if ! [ -e "$CONFIGFS" ]; then
-		echo "$CONFIGFS does not exist, skipping configfs usb gadget"
+		echo_kmsg "$CONFIGFS does not exist, skipping configfs usb gadget"
 		return
 	fi
 
 	if [ -z "$(get_usb_udc)" ]; then
-		echo "  No UDC found, skipping usb gadget"
+		echo_kmsg "  No UDC found, skipping usb gadget"
 		return
 	fi
 
@@ -205,14 +235,14 @@ setup_usb_network_configfs() {
 	usb_network_function="${deviceinfo_usb_network_function:-ncm.usb0}"
 	usb_network_function_fallback="rndis.usb0"
 
-	echo "  Setting up USB gadget through configfs"
+	echo_kmsg "  Setting up USB gadget through configfs"
 	# Create an usb gadet configuration
-	mkdir $CONFIGFS/g1 || echo "  Couldn't create $CONFIGFS/g1"
+	mkdir $CONFIGFS/g1 || echo_kmsg "  Couldn't create $CONFIGFS/g1"
 	echo "$usb_idVendor"  > "$CONFIGFS/g1/idVendor"
 	echo "$usb_idProduct" > "$CONFIGFS/g1/idProduct"
 
 	# Create english (0x409) strings
-	mkdir $CONFIGFS/g1/strings/0x409 || echo "  Couldn't create $CONFIGFS/g1/strings/0x409"
+	mkdir $CONFIGFS/g1/strings/0x409 || echo_kmsg "  Couldn't create $CONFIGFS/g1/strings/0x409"
 
 	# shellcheck disable=SC2154
 	echo "$deviceinfo_manufacturer" > "$CONFIGFS/g1/strings/0x409/manufacturer"
@@ -230,15 +260,15 @@ setup_usb_network_configfs() {
 
 	# Create configuration instance for the gadget
 	mkdir $CONFIGFS/g1/configs/c.1 \
-		|| echo "  Couldn't create $CONFIGFS/g1/configs/c.1"
+		|| echo_kmsg "  Couldn't create $CONFIGFS/g1/configs/c.1"
 	mkdir $CONFIGFS/g1/configs/c.1/strings/0x409 \
-		|| echo "  Couldn't create $CONFIGFS/g1/configs/c.1/strings/0x409"
+		|| echo_kmsg "  Couldn't create $CONFIGFS/g1/configs/c.1/strings/0x409"
 	echo "USB network" > $CONFIGFS/g1/configs/c.1/strings/0x409/configuration \
-		|| echo "  Couldn't write configration name"
+		|| echo_kmsg "  Couldn't write configration name"
 
 	# Link the network instance to the configuration
 	ln -s $CONFIGFS/g1/functions/"$usb_network_function" $CONFIGFS/g1/configs/c.1 \
-		|| echo "  Couldn't symlink $usb_network_function"
+		|| echo_kmsg "  Couldn't symlink $usb_network_function"
 
 	# If an argument was supplied then skip writing to the UDC (only used for mass storage
 	# log recovery)
@@ -258,7 +288,7 @@ start_unudhcpd() {
 	fi
 
 	local client_ip="${unudhcpd_client_ip:-172.16.42.2}"
-	echo "Starting unudhcpd with server ip $HOST_IP, client ip: $client_ip"
+	echo_kmsg "Starting unudhcpd with server ip $HOST_IP, client ip: $client_ip"
 
 	# Get usb interface
 	usb_network_function="${deviceinfo_usb_network_function:-ncm.usb0}"
@@ -283,14 +313,14 @@ start_unudhcpd() {
 	fi
 
 	if [ -z "$INTERFACE" ]; then
-		echo "  Could not find an interface to run a dhcp server on"
-		echo "  Interfaces:"
+		echo_kmsg "  Could not find an interface to run a dhcp server on"
+		echo_kmsg "  Interfaces:"
 		ip link
 		return
 	fi
 
-	echo "  Using interface $INTERFACE"
-	echo "  Starting the DHCP daemon"
+	echo_kmsg "  Using interface $INTERFACE"
+	echo_kmsg "  Starting the DHCP daemon"
 	(
 		unudhcpd -i "$INTERFACE" -s "$HOST_IP" -c "$client_ip"
 	) &
@@ -306,8 +336,7 @@ setup_usb_configfs_udc() {
         echo "" > "$CONFIGFS"/g1/UDC || echo "  Couldn't write to clear UDC"
     fi
     # Link the gadget instance to an USB Device Controller. This activates the gadget.
-    # See also: https://gitlab.postmarketos.org/citrOS/pmbootstrap/issues/338
-    echo "$_udc_dev" > "$CONFIGFS"/g1/UDC || echo "  Couldn't write new UDC"
+    echo "$_udc_dev" > "$CONFIGFS"/g1/UDC || echo_kmsg "  Couldn't write new UDC"
 }
 
 get_usb_udc() {
@@ -336,7 +365,7 @@ run_getty() {
             # shellcheck disable=SC3061
             read -r < /dev/ttyGS0
         fi
-        while /usr/bin/getty -n -l /sbin/citros_getty "$1" 115200 vt100; do
+        while /usr/bin/getty -n -l /sbin/citronics_getty "$1" 115200 vt100; do
             sleep 0.2
         done
     } &
@@ -347,8 +376,8 @@ restore_consoles() {
     # were stashed
     if [ -e "/proc/1/fd/3" ]; then
         exec 1>&3 2>&4
-    elif ! grep -q "citros.debug-shell" /proc/cmdline; then
-        echo "$LOG_PREFIX Disabling console output again (use 'citros.debug-shell' to keep it enabled)"
+    elif ! grep -q "citronics.debug-shell" /proc/cmdline; then
+        echo_kmsg "Disabling console output again (use 'citronics.debug-shell' to keep it enabled)"
         exec >/dev/null 2>&1
     fi
 
@@ -367,13 +396,13 @@ map_subpartitions() {
         # Extract mmcblkXpY from mmcblkXpYpZ
         local superpartition
         superpartition=$(echo "$rootfs" | grep -oE '^mmcblk[0-9]+p[0-9]+')
-        echo "Mapping subpartitions of $superpartition"
+        echo_kmsg "Mapping subpartitions of $superpartition"
 
         # Wait for the superpartition to be available, with a timeout of 10 seconds
         local root_partition="/dev/$superpartition"
         local timeout=10
         while [ ! -e "$root_partition" ] && [ $timeout -gt 0 ]; do
-            echo "Waiting for $root_partition to be available..."
+            echo_kmsg "Waiting for $root_partition to be available..."
             sleep 1
             timeout=$((timeout - 1))
         done
@@ -385,61 +414,12 @@ map_subpartitions() {
                 ln -s "$dev" "/dev/$(basename "$dev")"
             done
         else
-            echo "Device $root_partition not available after 10 seconds, skipping mapping."
+            echo_kmsg "Device $root_partition not available after 10 seconds, skipping mapping."
         fi
     else
-        echo "No subpartitions to map for $rootfs"
+        echo_kmsg "No subpartitions to map for $rootfs"
     fi
 }
-
-get_partition_number() {
-    local rootdev="$1"
-    echo "$rootdev" | grep -oE 'p[0-9]+$' | sed 's/^p//'
-}
-
-has_unallocated_space() {
-    local device="$1"
-    local part_num="$2"
-
-    # Use growpart in dry-run mode to check if it would grow
-    if growpart --dry-run "$device" "$part_num" 2>&1 | grep -q "CHANGED"; then
-        return 0  # there is space to grow
-    else
-        return 1  # no space
-    fi
-}
-
-resize_root_partition() {
-    local partition
-    partition=$(get_kernel_param "rootfs")
-
-    part_num=$(get_partition_number "$partition")
-
-    # Remove the /dev/ prefix if present
-    partition=${partition#/dev/}
-
-	if [ -z "${partition##"/dev/mapper/"*}" ] || [ -z "${partition##"/dev/dm-"*}" ]; then
-		# Get physical device
-		if [ -n "$SUBPARTITION_DEV" ]; then
-			partition_dev="$SUBPARTITION_DEV"
-		else
-			partition_dev=$(dmsetup deps -o blkdevname "$partition" | \
-				awk -F "[()]" '{print "/dev/"$2}')
-		fi
-		if has_unallocated_space "$partition_dev" $part_num; then
-			echo "Resize root partition ($partition)"
-            kpartx -d "$partition"
-            growpart "$partition_dev" $part_num
-            kpartx -asf "$partition_dev"
-            resize2fs "$partition"
-		else
-			echo "Not resizing root partition ($partition): no free space left"
-		fi
-	else
-		echo "Unable to resize root partition: failed to find qualifying partition"
-	fi
-}
-
 
 mount_rootfs() {
     local rootfs
@@ -452,7 +432,7 @@ mount_rootfs() {
     local rootfs_device="/dev/$rootfs"
     local timeout=10
     while [ ! -e "$rootfs_device" ] && [ $timeout -gt 0 ]; do
-        echo "Waiting for $rootfs_device to be available..."
+        echo_kmsg "Waiting for $rootfs_device to be available..."
         sleep 1
         timeout=$((timeout - 1))
     done
@@ -460,7 +440,7 @@ mount_rootfs() {
     if [ -e "$rootfs_device" ]; then
         mount "$rootfs_device" /sysroot
     else
-        echo "Device $rootfs_device not available after 10 seconds, cannot mount rootfs."
+        echo_kmsg "Device $rootfs_device not available after 10 seconds, cannot mount rootfs."
     fi
 }
 
@@ -475,7 +455,7 @@ mount_boot_partition() {
     local boot_partition_device="/dev/$boot_partition"
     local timeout=10
     while [ ! -e "$boot_partition_device" ] && [ $timeout -gt 0 ]; do
-        echo "Waiting for $boot_partition_device to be available..."
+        echo_kmsg "Waiting for $boot_partition_device to be available..."
         sleep 1
         timeout=$((timeout - 1))
     done
@@ -483,6 +463,6 @@ mount_boot_partition() {
     if [ -e "$boot_partition_device" ]; then
         mount "$boot_partition_device" /sysroot/boot
     else
-        echo "Device $boot_partition_device not available after 10 seconds, cannot mount boot partition."
+        echo_kmsg "Device $boot_partition_device not available after 10 seconds, cannot mount boot partition."
     fi
 }
