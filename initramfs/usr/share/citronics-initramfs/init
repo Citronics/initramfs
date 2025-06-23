@@ -38,6 +38,9 @@ if [ -n "$rootfs" ]; then
     echo_kmsg "Mapping subpartitions..."
     map_subpartitions
 
+    echo_kmsg "Resizing rootfs partition..."
+    resize_root_partition
+
     echo_kmsg "Mounting rootfs partition..."
     mount_rootfs
 

@@ -384,6 +384,56 @@ restore_consoles() {
     echo ratelimit > /proc/sys/kernel/printk_devkmsg
 }
 
+get_partition_number() {
+    local rootdev="$1"
+    echo "$rootdev" | grep -oE 'p[0-9]+$' | sed 's/^p//'
+}
+
+has_unallocated_space() {
+    local device="$1"
+    local part_num="$2"
+
+    # Use growpart in dry-run mode to check if it would grow
+    if growpart --dry-run "$device" "$part_num" 2>&1 | grep -q "CHANGED"; then
+        return 0  # there is space to grow
+    else
+        return 1  # no space
+    fi
+}
+
+resize_root_partition() {
+    local partition
+    partition=$(get_kernel_param "rootfs")
+
+    part_num=$(get_partition_number "$partition")
+
+    # Remove the /dev/ prefix if present
+    partition=${partition#/dev/}
+
+    echo_kmsg "Attempting to resize root partition: $partition"
+
+	if [ -z "${partition##"/dev/mapper/"*}" ] || [ -z "${partition##"/dev/dm-"*}" ]; then
+		# Get physical device
+		if [ -n "$SUBPARTITION_DEV" ]; then
+			partition_dev="$SUBPARTITION_DEV"
+		else
+			partition_dev=$(dmsetup deps -o blkdevname "$partition" | \
+				awk -F "[()]" '{print "/dev/"$2}')
+		fi
+		if has_unallocated_space "$partition_dev" $part_num; then
+			echo_kmsg "Resize root partition ($partition)"
+            kpartx -d "$partition"
+            growpart "$partition_dev" $part_num
+            kpartx -asf "$partition_dev"
+            resize2fs "$partition"
+		else
+			echo_kmsg "Not resizing root partition ($partition): no free space left"
+		fi
+	else
+		echo_kmsg "Unable to resize root partition: failed to find qualifying partition"
+	fi
+}
+
 map_subpartitions() {
     local rootfs
     rootfs=$(get_kernel_param "rootfs")
