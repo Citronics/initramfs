@@ -1,4 +1,4 @@
-#!/sbin/busybox sh
+#!/bin/sh
 # shellcheck disable=SC1091
 
 set -a
@@ -15,11 +15,9 @@ VERSION="${VERSION:-unknown}"
 INITRAMFS_PKG_VERSION="0.0.1"
 
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-/sbin/busybox --install -s
+busybox --install -s
 
-mkdir -p /tmp /boot /sysroot
 mount_proc_sys_dev
-setup_log
 
 echo_kmsg "Setup firmware path..."
 setup_firmware_path

@@ -1,4 +1,4 @@
-#!/sbin/busybox sh
+#!/bin/sh
 # This file will be in /init_functions.sh inside the initramfs.
 
 # clobbering variables by not setting them if they have
@@ -14,73 +14,29 @@ deviceinfo_codename="${deviceinfo_codename:-}"
 
 get_kernel_param() {
     local param="$1"
-    sed -n "s/.*\b${param}=\([^ ]*\).*/\1/p" /proc/cmdline
+    for word in $(cat /proc/cmdline); do
+        case "$word" in
+            $param=*) echo "${word#*=}"; return ;;
+        esac
+    done
 }
 
 echo_kmsg() {
     echo "$LOG_PREFIX $*" > /dev/kmsg
 }
 
-setup_log() {
-    local console
-    local log_targets
-    console="$(cat /sys/devices/virtual/tty/console/active)"
-    log_targets="/citronics_init.log"
-    # If we have an active console, the kernel will be logging there.
-    if [ -n "$console" ] ; then
-        exec 3>&1 4>&2
-    else
-        console="/dev/$(echo "$deviceinfo_getty" | cut -d';' -f1)"
-        if [ -e "$console" ]; then
-            log_targets="$log_targets $console"
-        fi
-        echo_kmsg "Logging started" \
-            | tee "$console" > /dev/tty0
-        log_targets="$log_targets /dev/tty0"
-    fi
-    # Disable kmsg ratelimiting for userspace (it gets re-enabled again before switch_root)
-    echo on > /proc/sys/kernel/printk_devkmsg
-    syslogd -K < /dev/zero >/dev/zero 2>&1
-    # Redirect to a subshell which outputs to the logfile as well
-    # as to the kernel ringbuffer and pstore (if available).
-    # Process substitution is technically non-POSIX, but is supported by busybox
-    # We are intentionally word-splitting $log_targets into multiple arguments.
-    # shellcheck disable=SC3001,SC2086
-    exec > >(tee $log_targets | logger -t "$LOG_PREFIX" -p user.info) 2>&1
-}
-
-mount_subpartitions() {
-    local superpartition
-    superpartition=$(get_kernel_param "superpartition")
-    sleep 5
-    local rootfs_subpartition
-    rootfs_subpartition=$(get_kernel_param "rootfs_subpartition")
-
-    echo_kmsg "Attempting to map subpartitions of $superpartition"
-
-    kpartx -afs "$superpartition"
-
-    echo_kmsg "Attempting to mount /dev/mapper/$rootfs_subpartition"
-    mount "/dev/mapper/$rootfs_subpartition" /sysroot
-    sleep 5
-}
-
 mount_proc_sys_dev() {
-    # mdev
-    mkdir -p /proc /sys /dev /run
     mount -t proc -o nodev,noexec,nosuid proc /proc || echo_kmsg "Couldn't mount /proc"
     mount -t sysfs -o nodev,noexec,nosuid sysfs /sys || echo_kmsg "Couldn't mount /sys"
     mount -t devtmpfs -o mode=0755,nosuid dev /dev || echo_kmsg "Couldn't mount /dev"
     mount -t tmpfs -o nosuid,nodev,mode=0755 run /run || echo_kmsg "Couldn't mount /run"
 
     mkdir /config
-    mount -t configfs -o nodev,noexec,nosuid configfs /config
+    mount -t configfs -o nodev,noexec,nosuid configfs /config || echo_kmsg "Couldn't mount /config"
 
-    # /dev/pts (needed for telnet)
     mkdir -p /dev/pts
-    mount -t devpts devpts /dev/pts
+    mount -t devpts devpts /dev/pts || echo_kmsg "Couldn't mount /dev/pts"
 
-    # This is required for process substitution to work (as used in setup_log())
     ln -s /proc/self/fd /dev/fd
 }
 
@@ -150,12 +106,12 @@ debug_shell() {
 
 	cat <<-EOF > /sbin/citronics_getty
 	#!/usr/bin/sh
-	/usr/bin/sh -l
+	/bin/sh -l
 	EOF
 	chmod +x /sbin/citronics_getty
 
 	cat <<-EOF > /sbin/citronics_logdump
-	#!/usr/bin/sh
+	#!/bin/sh
 	echo "Dumping logs, check for a new mass storage device"
 	touch /tmp/dump_logs
 	EOF
@@ -396,22 +352,40 @@ has_unallocated_space() {
 
 map_and_resize_root_partition() {
     local rootfs part_num rootfs_path base_device mapper_path output
+    local timeout=10
+    local delay=1
 
     rootfs=$(get_kernel_param "rootfs")
     rootfs=${rootfs#/dev/}
     rootfs_path="/dev/$rootfs"
 
-    echo_kmsg "Attempting to resize and map rootfs: $rootfs_path"
-
     part_num=$(get_partition_number "$rootfs_path")
     base_device=$(echo "$rootfs_path" | sed -E "s/p${part_num}$//")
     mapper_path="/dev/mapper/${base_device##/dev/}p${part_num}"
+
+    echo_kmsg "Waiting for rootfs device: $base_device"
+
+    # Wait up to 10 seconds for the rootfs device to appear
+    for i in $(seq 1 $timeout); do
+        if [ -b "$base_device" ]; then
+            echo_kmsg "Found rootfs device: $base_device"
+            break
+        fi
+        sleep $delay
+    done
+
+    if [ ! -b "$base_device" ]; then
+        echo_kmsg "Timeout waiting for rootfs device: $base_device"
+        return 1
+    fi
 
     if has_unallocated_space "$base_device"; then
         echo_kmsg "Resizing root partition $mapper_path on device $base_device"
         kpartx -d "$base_device"
         parted -f -s "$base_device" resizepart 2 100%
+        sleep 1
         kpartx -asf "$base_device"
+        sleep 1
         resize2fs "$mapper_path"
     else
         echo_kmsg "No resizing needed for root partition $mapper_path"
@@ -432,13 +406,9 @@ map_and_resize_root_partition() {
 mount_rootfs() {
     local rootfs
     rootfs=$(get_kernel_param "rootfs")
-
-    # Remove the /dev/ prefix if present
-    rootfs=${rootfs#/dev/}
-
     # Wait for the rootfs device to be available, with a timeout of 10 seconds
-    local rootfs_device="/dev/$rootfs"
-    local timeout=10
+    local rootfs_device="$rootfs"
+    local timeout=20
     while [ ! -e "$rootfs_device" ] && [ $timeout -gt 0 ]; do
         echo_kmsg "Waiting for $rootfs_device to be available..."
         sleep 1

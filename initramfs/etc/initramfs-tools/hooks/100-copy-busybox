@@ -1,0 +1,55 @@
+#!/bin/sh
+
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case $1 in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+# Detect OS
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    if [ "$ID" != "ubuntu" ]; then
+        echo "[Hook] Skipping busybox: Not running on Ubuntu (detected $ID)"
+        exit 0
+    fi
+else
+    echo "[Hook] Skipping: Could not detect OS"
+    exit 0
+fi
+
+echo "[Hook] Add busybox"
+
+BB_BIN=/usr/bin/busybox
+
+[ n = "$BUSYBOX" ] && exit 0
+
+[ -r /usr/share/initramfs-tools/hook-functions ] || exit 0
+. /usr/share/initramfs-tools/hook-functions
+
+if [ -f $DESTDIR/bin/sh ] && cmp -s $DESTDIR/bin/sh $BB_BIN ; then
+  # initramfs copies busybox into /bin/sh, undo this
+  rm -f $DESTDIR/bin/sh
+fi
+rm -f $DESTDIR/bin/busybox	# for compatibility with old initramfs
+copy_exec $BB_BIN /bin/busybox
+
+for alias in $($BB_BIN --list-long); do
+  alias="${alias#/}"
+  case "$alias" in
+    # strip leading /usr, we don't use it
+    usr/*) alias="${alias#usr/}" ;;
+    */*) ;;
+    *) alias="bin/$alias" ;;  # make it into /bin
+  esac
+
+  [ -e "$DESTDIR/$alias" ] || \
+    ln "$DESTDIR/bin/busybox" "$DESTDIR/$alias"
+done
