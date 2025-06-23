@@ -390,84 +390,42 @@ get_partition_number() {
 }
 
 has_unallocated_space() {
-    local device="$1"
-    local part_num="$2"
-
-    # Use growpart in dry-run mode to check if it would grow
-    if growpart --dry-run "$device" "$part_num" 2>&1 | grep -q "CHANGED"; then
-        return 0  # there is space to grow
-    else
-        return 1  # no space
-    fi
+    parted -s "$1" print free | tail -n2 | \
+            head -n1 | grep -qi "free space"
 }
 
-resize_root_partition() {
-    local partition
-    partition=$(get_kernel_param "rootfs")
+map_and_resize_root_partition() {
+    local rootfs part_num rootfs_path base_device mapper_path output
 
-    part_num=$(get_partition_number "$partition")
-
-    # Remove the /dev/ prefix if present
-    partition=${partition#/dev/}
-
-    echo_kmsg "Attempting to resize root partition: $partition"
-
-	if [ -z "${partition##"/dev/mapper/"*}" ] || [ -z "${partition##"/dev/dm-"*}" ]; then
-		# Get physical device
-		if [ -n "$SUBPARTITION_DEV" ]; then
-			partition_dev="$SUBPARTITION_DEV"
-		else
-			partition_dev=$(dmsetup deps -o blkdevname "$partition" | \
-				awk -F "[()]" '{print "/dev/"$2}')
-		fi
-		if has_unallocated_space "$partition_dev" $part_num; then
-			echo_kmsg "Resize root partition ($partition)"
-            kpartx -d "$partition"
-            growpart "$partition_dev" $part_num
-            kpartx -asf "$partition_dev"
-            resize2fs "$partition"
-		else
-			echo_kmsg "Not resizing root partition ($partition): no free space left"
-		fi
-	else
-		echo_kmsg "Unable to resize root partition: failed to find qualifying partition"
-	fi
-}
-
-map_subpartitions() {
-    local rootfs
     rootfs=$(get_kernel_param "rootfs")
-
-    # Remove the /dev/ prefix if present
     rootfs=${rootfs#/dev/}
+    rootfs_path="/dev/$rootfs"
 
-    # Check if rootfs is in the form mmcblkXpYpZ
-    if echo "$rootfs" | grep -qE '^mmcblk[0-9]+p[0-9]+p[0-9]+$'; then
-        # Extract mmcblkXpY from mmcblkXpYpZ
-        local superpartition
-        superpartition=$(echo "$rootfs" | grep -oE '^mmcblk[0-9]+p[0-9]+')
-        echo_kmsg "Mapping subpartitions of $superpartition"
+    echo_kmsg "Attempting to resize and map rootfs: $rootfs_path"
 
-        # Wait for the superpartition to be available, with a timeout of 10 seconds
-        local root_partition="/dev/$superpartition"
-        local timeout=10
-        while [ ! -e "$root_partition" ] && [ $timeout -gt 0 ]; do
-            echo_kmsg "Waiting for $root_partition to be available..."
-            sleep 1
-            timeout=$((timeout - 1))
-        done
+    part_num=$(get_partition_number "$rootfs_path")
+    base_device=$(echo "$rootfs_path" | sed -E "s/p${part_num}$//")
+    mapper_path="/dev/mapper/${base_device##/dev/}p${part_num}"
 
-        if [ -e "$root_partition" ]; then
-            kpartx -afs "$root_partition"
-            # Create symbolic links in /dev/ for each device in /dev/mapper/
-            for dev in /dev/mapper/${superpartition}p*; do
-                ln -s "$dev" "/dev/$(basename "$dev")"
-            done
-        else
-            echo_kmsg "Device $root_partition not available after 10 seconds, skipping mapping."
-        fi
+    if has_unallocated_space "$base_device"; then
+        echo_kmsg "Resizing root partition $mapper_path on device $base_device"
+        kpartx -d "$base_device"
+        parted -f -s "$base_device" resizepart 2 100%
+        kpartx -asf "$base_device"
+        resize2fs "$mapper_path"
     else
-        echo_kmsg "No subpartitions to map for $rootfs"
+        echo_kmsg "No resizing needed for root partition $mapper_path"
+        kpartx -asf "$base_device"  # Ensure partitions are still mapped
+    fi
+
+    # --- Create symlinks (ex: /dev/mmcblk0p20p2 -> /dev/mapper/mmcblk0p20p2) ---
+    if echo "$rootfs" | grep -qE '^mmcblk[0-9]+p[0-9]+p[0-9]+$'; then
+        echo_kmsg "Creating subpartition symlinks for $base_device"
+        for dev in /dev/mapper/$(basename "$base_device")p*; do
+            ln -sf "$dev" "/dev/$(basename "$dev")"
+        done
+    else
+        echo_kmsg "No subpartition mapping required for $rootfs"
     fi
 }
 

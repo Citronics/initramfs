@@ -35,11 +35,8 @@ kill mdev 2>/dev/null
 
 rootfs=$(get_kernel_param "rootfs")
 if [ -n "$rootfs" ]; then
-    echo_kmsg "Mapping subpartitions..."
-    map_subpartitions
-
-    echo_kmsg "Resizing rootfs partition..."
-    resize_root_partition
+    echo_kmsg "Attempting to map and if needed, resize rootfs partition..."
+    map_and_resize_root_partition
 
     echo_kmsg "Mounting rootfs partition..."
     mount_rootfs

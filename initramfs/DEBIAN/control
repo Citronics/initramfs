@@ -1,9 +1,9 @@
 Package: citronics-initramfs
-Version: 1.0.4
+Version: 1.0.5
 Section: base
 Priority: optional
 Architecture: armhf
 Maintainer: info@citronics.eu
-Depends: initramfs-tools, busybox-static, kpartx, inetutils-telnetd, unudhcpd
+Depends: initramfs-tools, busybox-static, kpartx, inetutils-telnetd, unudhcpd, parted
 Description: Custom initramfs-tools hooks and scripts for citronics boards
  This package installs custom hooks, modules, and scripts into initramfs-tools.
