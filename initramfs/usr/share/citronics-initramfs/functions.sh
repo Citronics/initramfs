@@ -5,8 +5,7 @@
 # a value already!
 CONFIGFS="/config/usb_gadget"
 CONFIGFS_ACM_FUNCTION="acm.usb0"
-CONFIGFS_MASS_STORAGE_FUNCTION="mass_storage.0"
-HOST_IP="${unudhcpd_host_ip:-172.16.42.1}"
+HOST_IP="${unudhcpd_host_ip:-10.0.42.1}"
 
 deviceinfo_getty="${deviceinfo_getty:-}"
 deviceinfo_name="${deviceinfo_name:-}"
@@ -110,13 +109,6 @@ debug_shell() {
 	EOF
 	chmod +x /sbin/citronics_getty
 
-	cat <<-EOF > /sbin/citronics_logdump
-	#!/bin/sh
-	echo "Dumping logs, check for a new mass storage device"
-	touch /tmp/dump_logs
-	EOF
-	chmod +x /sbin/citronics_logdump
-
     # Get the console (ttyX) associated with /dev/console
     local active_console
     active_console="$(cat /sys/devices/virtual/tty/tty0/active)"
@@ -131,7 +123,7 @@ debug_shell() {
     for tty in $serial_ports; do
         # Some ports we handle explicitly below to make sure we don't
         # accidentally spawn two getty's on them
-        if echo "tty0 tty1 ttyGS0 $getty" | grep -q "$tty" ; then
+        if echo "tty0 tty1 $getty" | grep -q "$tty" ; then
             continue
         fi
         run_getty "$tty"
@@ -146,17 +138,12 @@ debug_shell() {
         active_console="tty1"
     fi
 
+    # Prevent sysrq help messages from being printed to serial
+    echo 0 > /proc/sys/kernel/sysrq
+
     # Getty on the display
     run_getty "$active_console"
 
-    # And on the usb acm port (if it exists)
-    if [ -e /dev/ttyGS0 ]; then
-        run_getty ttyGS0
-    fi
-
-    setup_usb_configfs_udc
-    # Spawn telnetd for those who prefer it. ACM gadget mode is not
-    # supported on some old kernels so this exists as a fallback.
     telnetd -b "${HOST_IP}:23" -l /sbin/citronics_getty &
 }
 
@@ -185,9 +172,9 @@ setup_usb_network_configfs() {
 	fi
 
 	# Default values for USB-related deviceinfo variables
-	usb_idVendor="${deviceinfo_usb_idVendor:-0x18D1}"   # default: Google Inc.
-	usb_idProduct="${deviceinfo_usb_idProduct:-0xD001}" # default: Nexus 4 (fastboot)
-	usb_serialnumber="${deviceinfo_usb_serialnumber:-postmarketOS}"
+	usb_idVendor="${deviceinfo_usb_idVendor:-0x1d6b}"   # default: Linux Foundation.
+	usb_idProduct="${deviceinfo_usb_idProduct:-0x0042}"
+	usb_serialnumber="${deviceinfo_usb_serialnumber:-citronics}"
 	usb_network_function="${deviceinfo_usb_network_function:-ncm.usb0}"
 	usb_network_function_fallback="rndis.usb0"
 
@@ -225,12 +212,6 @@ setup_usb_network_configfs() {
 	# Link the network instance to the configuration
 	ln -s $CONFIGFS/g1/functions/"$usb_network_function" $CONFIGFS/g1/configs/c.1 \
 		|| echo_kmsg "  Couldn't symlink $usb_network_function"
-
-	# If an argument was supplied then skip writing to the UDC (only used for mass storage
-	# log recovery)
-	if [ -z "$skip_udc" ]; then
-		setup_usb_configfs_udc
-	fi
 }
 
 start_unudhcpd() {
@@ -243,7 +224,7 @@ start_unudhcpd() {
 		return
 	fi
 
-	local client_ip="${unudhcpd_client_ip:-172.16.42.2}"
+	local client_ip="${unudhcpd_client_ip:-10.0.42.2}"
 	echo_kmsg "Starting unudhcpd with server ip $HOST_IP, client ip: $client_ip"
 
 	# Get usb interface
@@ -307,21 +288,7 @@ get_usb_udc() {
 
 run_getty() {
     {
-        # Due to how the Linux host ACM driver works, we need to wait
-        # for data to be sent from the host before spawning the getty.
-        # Otherwise our README message will be echo'd back all garbled.
-        # On Linux in particular, there is a hack we can use: by writing
-        # something to the port, it will be echo'd back at the moment the
-        # port on the host side is opened, so user input won't even be
-        # needed in most cases. For more info see the blog posts at:
-        # https://michael.stapelberg.ch/posts/2021-04-27-linux-usb-virtual-serial-cdc-acm/
-        # https://connolly.tech/posts/2024_04_15-broken-connections/
-        if [ "$1" = "ttyGS0" ]; then
-            echo " " > /dev/ttyGS0
-            # shellcheck disable=SC3061
-            read -r < /dev/ttyGS0
-        fi
-        while /usr/bin/getty -n -l /sbin/citronics_getty "$1" 115200 vt100; do
+        while /usr/sbin/getty -n -l /sbin/citronics_getty "$1" 115200 vt100; do
             sleep 0.2
         done
     } &
