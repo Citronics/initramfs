@@ -15,7 +15,7 @@ VERSION="${VERSION:-unknown}"
 INITRAMFS_PKG_VERSION="0.0.1"
 
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-busybox --install -s
+/bin/busybox --install -s
 
 mount_proc_sys_dev
 
