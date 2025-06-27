@@ -288,7 +288,7 @@ get_usb_udc() {
 
 run_getty() {
     {
-        while /usr/sbin/getty -n -l /sbin/citronics_getty "$1" 115200 vt100; do
+        while /bin/getty -n -l /sbin/citronics_getty "$1" 115200 vt100; do
             sleep 0.2
         done
     } &
