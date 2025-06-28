@@ -104,7 +104,7 @@ debug_shell() {
 	EOF
 
 	cat <<-EOF > /sbin/citronics_getty
-	#!/usr/bin/sh
+	#!/bin/sh
 	/bin/sh -l
 	EOF
 	chmod +x /sbin/citronics_getty
