@@ -53,8 +53,8 @@ if [ -n "$rootfs" ]; then
         else
             echo_kmsg "No bootpart parameter found, skipping boot partition mounting."
         fi
-        echo_kmsg "Restore consoles to original state..."
-        restore_consoles
+        # echo_kmsg "Restore consoles to original state..."
+        # restore_consoles
 
         echo_kmsg "Switching to /sysroot"
         exec switch_root /sysroot /sbin/init
