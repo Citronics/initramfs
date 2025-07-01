@@ -347,13 +347,18 @@ map_and_resize_root_partition() {
     fi
 
     if has_unallocated_space "$base_device"; then
-        echo_kmsg "Resizing root partition $mapper_path on device $base_device"
-        kpartx -d "$base_device"
-        parted -f -s "$base_device" resizepart 2 100%
-        sleep 1
-        kpartx -asf "$base_device"
-        sleep 1
-        resize2fs "$mapper_path"
+        if [ "$(get_kernel_param "resize_rootfs")" = "1" ]; then
+            echo_kmsg "Resizing root partition $mapper_path on device $base_device"
+            kpartx -d "$base_device"
+            parted -f -s "$base_device" resizepart 2 100%
+            sleep 1
+            kpartx -asf "$base_device"
+            sleep 1
+            resize2fs "$mapper_path"
+        else
+            echo_kmsg "resize_rootfs=1 not set, skipping resize for $mapper_path"
+            kpartx -asf "$base_device"
+        fi
     else
         echo_kmsg "No resizing needed for root partition $mapper_path"
         kpartx -asf "$base_device"  # Ensure partitions are still mapped
