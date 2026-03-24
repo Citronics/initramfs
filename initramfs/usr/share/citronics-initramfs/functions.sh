@@ -8,8 +8,8 @@ CONFIGFS_ACM_FUNCTION="acm.usb0"
 HOST_IP="${unudhcpd_host_ip:-10.0.42.1}"
 
 deviceinfo_getty="${deviceinfo_getty:-}"
-deviceinfo_name="${deviceinfo_name:-}"
-deviceinfo_codename="${deviceinfo_codename:-}"
+carrierinfo_name="${carrierinfo_name:-}"
+carrierinfo_codename="${carrierinfo_codename:-}"
 
 get_kernel_param() {
     local param="$1"
@@ -91,7 +91,7 @@ debug_shell() {
 	cat <<-EOF > /README
 	citronics debug shell
 
-	  Device: $deviceinfo_name ($deviceinfo_codename)
+	  Device: $carrierinfo_name ($carrierinfo_codename)
 	  Kernel: $(uname -r)
 	  OS ver: $VERSION
 	  initrd: $INITRAMFS_PKG_VERSION
@@ -191,7 +191,7 @@ setup_usb_network_configfs() {
 	echo "$deviceinfo_manufacturer" > "$CONFIGFS/g1/strings/0x409/manufacturer"
 	echo "$usb_serialnumber"        > "$CONFIGFS/g1/strings/0x409/serialnumber"
 	# shellcheck disable=SC2154
-	echo "$deviceinfo_name"         > "$CONFIGFS/g1/strings/0x409/product"
+	echo "$carrierinfo_name"         > "$CONFIGFS/g1/strings/0x409/product"
 
 	# Create network function.
 	if ! mkdir $CONFIGFS/g1/functions/"$usb_network_function"; then

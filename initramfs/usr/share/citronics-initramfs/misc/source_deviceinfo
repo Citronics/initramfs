@@ -1,5 +1,6 @@
 # These scripts must be sourced (not executed) to work properly
 # shellcheck disable=SC1091
+[ -f /usr/share/carrierinfo/carrierinfo ] && . /usr/share/carrierinfo/carrierinfo
 [ -f /usr/share/deviceinfo/deviceinfo ] && . /usr/share/deviceinfo/deviceinfo
 [ -f /etc/deviceinfo ] && . /etc/deviceinfo
 
