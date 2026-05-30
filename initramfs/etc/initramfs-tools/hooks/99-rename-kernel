@@ -6,7 +6,7 @@ prereqs() {
     echo "$PREREQ"
 }
 
-case $1 in
+case "$1" in
     prereqs)
         prereqs
         exit 0
@@ -15,6 +15,21 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-echo "[Hook] Rename kernel image"
-DESTDIR="/boot"
-mv "${DESTDIR}/vmlinuz-${version}" "${DESTDIR}/zImage"
+# Source deviceinfo (same pattern as misc/source_deviceinfo)
+[ -f /usr/share/carrierinfo/carrierinfo ] && . /usr/share/carrierinfo/carrierinfo
+[ -f /usr/share/deviceinfo/deviceinfo ] && . /usr/share/deviceinfo/deviceinfo
+[ -f /etc/deviceinfo ] && . /etc/deviceinfo
+
+if [ -z "$deviceinfo_arch" ]; then
+    echo "[Hook] Warning: deviceinfo_arch not set, defaulting to zImage rename"
+fi
+
+echo "[Hook] Rename kernel image (arch: ${deviceinfo_arch:-unknown})"
+
+if [ "$deviceinfo_arch" = "aarch64" ] || [ "$deviceinfo_arch" = "arm64" ]; then
+    mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/Image"
+    echo "[Hook] Renamed to Image"
+else
+    mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/zImage"
+    echo "[Hook] Renamed to zImage"
+fi

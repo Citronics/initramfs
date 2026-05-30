@@ -1,12 +1,39 @@
-# ...existing code...
-DESTDIR="/boot"
-# Example: Copy DTB for the current kernel version
-DTB_SRC="/usr/lib/linux-image-${version}/qcom-msm8974pro-fairphone-fp2.dtb"
-DTB_DST="${DESTDIR}/qcom-msm8974pro-fairphone-fp2.dtb"
+#!/bin/sh
 
-if [ -e "$DTB_SRC" ]; then
-    echo "[Hook] Copying DTB from $DTB_SRC to $DTB_DST"
-    cp "$DTB_SRC" "$DTB_DST"
-else
-    echo "[Hook] Warning: DTB not found at $DTB_SRC"
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Source deviceinfo (same pattern as misc/source_deviceinfo)
+[ -f /usr/share/carrierinfo/carrierinfo ] && . /usr/share/carrierinfo/carrierinfo
+[ -f /usr/share/deviceinfo/deviceinfo ] && . /usr/share/deviceinfo/deviceinfo
+[ -f /etc/deviceinfo ] && . /etc/deviceinfo
+
+if [ -z "$deviceinfo_dtb" ]; then
+    echo "[Hook] Warning: deviceinfo_dtb not set, falling back to FP2 DTB"
+    deviceinfo_dtb="qcom-msm8974pro-fairphone-fp2.dtb"
 fi
+
+echo "[Hook] Copying DTB(s): $deviceinfo_dtb"
+
+for dtb in $deviceinfo_dtb; do
+    DTB_SRC="/usr/lib/linux-image-${version}/${dtb}"
+    DTB_DST="${DESTDIR}/boot/${dtb}"
+    if [ -e "$DTB_SRC" ]; then
+        echo "[Hook] Copying DTB from $DTB_SRC to $DTB_DST"
+        cp "$DTB_SRC" "$DTB_DST"
+    else
+        echo "[Hook] Warning: DTB not found at $DTB_SRC"
+    fi
+done
