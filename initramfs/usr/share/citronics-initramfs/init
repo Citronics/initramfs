@@ -26,7 +26,7 @@ echo_kmsg "Launch mdev..."
 setup_mdev
 
 echo_kmsg "Load relevant modules...."
-load_modules /lib/modules/initramfs.load
+load_modules /lib/modules/initramfs.load "$deviceinfo_modules_initfs"
 
 echo_kmsg "Kill mdev since it's not needed anymore..."
 kill mdev 2>/dev/null
