@@ -2,6 +2,10 @@
 
 Custom initramfs package for Debian and Ubuntu on the Citronics Lime (Fairphone 2) board. Installs all the necessary files for initramfs-tools to work on the target system.
 
+## FP3 Support
+
+Supports both FP2 (armhf) and FP3 (arm64). The package is architecture-independent (`all`) and relies on `initramfs-tools` hooks to copy board-specific files (DTBs, overlays, telnetd) at `update-initramfs` time.
+
 ## Prerequisites
 
 - `dpkg-deb` (available on any Debian/Ubuntu system)
@@ -42,3 +46,8 @@ This initramfs uses several command line params to shape its behaviour.
 | `resize_rootfs=1` | Resize the rootfs to the max available space. Useful for full distros such as Ubuntu/Debian. |
 
 You can set these in your `extlinux.conf` when creating your buildroot image or when building your Debian/Ubuntu image. They can also be changed after booting by modifying `/boot/extlinux/extlinux.conf`.
+
+## Links
+
+- [deb-packages](https://github.com/Citronics/deb-packages) — APT repository
+- [debos-citronics](https://github.com/Citronics/debos-citronics) — Image build recipes
