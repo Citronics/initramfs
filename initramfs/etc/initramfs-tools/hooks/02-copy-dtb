@@ -27,13 +27,20 @@ fi
 
 echo "[Hook] Copying DTB(s): $deviceinfo_dtb"
 
+mkdir -p "${DESTDIR}/boot"
 for dtb in $deviceinfo_dtb; do
-    DTB_SRC="/usr/lib/linux-image-${version}/${dtb}"
-    DTB_DST="${DESTDIR}/boot/${dtb}"
-    if [ -e "$DTB_SRC" ]; then
+    DTB_NAME="$(basename $dtb)"
+    DTB_DST="${DESTDIR}/boot/${DTB_NAME}"
+    DTB_SRC=""
+    if [ -e "/usr/lib/linux-image-${version}/${dtb}" ]; then
+        DTB_SRC="/usr/lib/linux-image-${version}/${dtb}"
+    elif [ -e "/usr/lib/linux-image-${version}/qcom/${DTB_NAME}" ]; then
+        DTB_SRC="/usr/lib/linux-image-${version}/qcom/${DTB_NAME}"
+    fi
+    if [ -n "$DTB_SRC" ]; then
         echo "[Hook] Copying DTB from $DTB_SRC to $DTB_DST"
         cp "$DTB_SRC" "$DTB_DST"
     else
-        echo "[Hook] Warning: DTB not found at $DTB_SRC"
+        echo "[Hook] Warning: DTB not found for ${dtb}"
     fi
 done

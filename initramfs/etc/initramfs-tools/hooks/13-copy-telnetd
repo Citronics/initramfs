@@ -16,4 +16,8 @@ esac
 . /usr/share/initramfs-tools/hook-functions
 
 echo "[Hook] Add telnetd and its dependencies"
+if [ ! -x /usr/sbin/telnetd ]; then
+    echo "[Hook] Warning: /usr/sbin/telnetd not found, skipping"
+    exit 0
+fi
 copy_exec /usr/sbin/telnetd /sbin

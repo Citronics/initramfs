@@ -15,10 +15,26 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-echo "[Hook] Copy overlay files to initramfs"
-cp -R /usr/share/citronics-initramfs/etc/* "${DESTDIR}/etc/"
+echo "[Hook] Copy overlay files to initramfs (DESTDIR=${DESTDIR})"
+
+echo "[Hook] Copying functions.sh"
+cp /usr/share/citronics-initramfs/functions.sh "${DESTDIR}/functions.sh"
+
+echo "[Hook] Copying etc overlay"
+cp -R /usr/share/citronics-initramfs/etc/. "${DESTDIR}/etc/"
+
+echo "[Hook] Copying deviceinfo"
 mkdir -p "${DESTDIR}/usr/share/deviceinfo/"
-cp /usr/share/deviceinfo/deviceinfo "${DESTDIR}/usr/share/deviceinfo/deviceinfo"
+cp /usr/share/deviceinfo/deviceinfo "${DESTDIR}/usr/share/deviceinfo/deviceinfo" || echo "[Hook] Warning: deviceinfo not found"
+
+echo "[Hook] Copying source_deviceinfo"
 mkdir -p "${DESTDIR}/usr/share/misc/"
 cp /usr/share/citronics-initramfs/misc/source_deviceinfo "${DESTDIR}/usr/share/misc/source_deviceinfo"
+
+echo "[Hook] Copying initramfs.load"
+mkdir -p "${DESTDIR}/lib/modules/"
 cp /usr/share/citronics-initramfs/lib/modules/initramfs.load "${DESTDIR}/lib/modules/initramfs.load"
+
+echo "[Hook] Verifying overlay files"
+ls "${DESTDIR}/functions.sh" "${DESTDIR}/usr/share/deviceinfo/deviceinfo" "${DESTDIR}/usr/share/misc/source_deviceinfo" 2>&1 || echo "[Hook] Warning: some overlay files missing (ok during first initramfs pass)"
+exit 0

@@ -27,9 +27,17 @@ fi
 echo "[Hook] Rename kernel image (arch: ${deviceinfo_arch:-unknown})"
 
 if [ "$deviceinfo_arch" = "aarch64" ] || [ "$deviceinfo_arch" = "arm64" ]; then
-    mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/Image"
-    echo "[Hook] Renamed to Image"
+    if [ -f "${DESTDIR}/boot/vmlinuz-${version}" ]; then
+        mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/Image"
+        echo "[Hook] Renamed to Image"
+    else
+        echo "[Hook] Kernel not in DESTDIR, skipping rename (will be done outside initramfs)"
+    fi
 else
-    mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/zImage"
-    echo "[Hook] Renamed to zImage"
+    if [ -f "${DESTDIR}/boot/vmlinuz-${version}" ]; then
+        mv "${DESTDIR}/boot/vmlinuz-${version}" "${DESTDIR}/boot/zImage"
+        echo "[Hook] Renamed to zImage"
+    else
+        echo "[Hook] Kernel not in DESTDIR, skipping rename (will be done outside initramfs)"
+    fi
 fi
