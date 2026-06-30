@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+KVER="$1"
+
+deviceinfo_arch=""
+deviceinfo_dtb=""
+
+if [ -f /usr/share/deviceinfo/deviceinfo ]; then
+  . /usr/share/deviceinfo/deviceinfo
+fi
+if [ -f /etc/deviceinfo ]; then
+  . /etc/deviceinfo
+fi
+
+echo "Updating boot partition for kernel $KVER"
+
+if [ "$deviceinfo_arch" = "aarch64" ] || [ "$deviceinfo_arch" = "arm64" ]; then
+  cp "/boot/vmlinuz-$KVER" /boot/Image.gz
+  echo "Copied vmlinuz-$KVER to /boot/Image.gz"
+else
+  cp "/boot/vmlinuz-$KVER" /boot/zImage
+  echo "Copied vmlinuz-$KVER to /boot/zImage"
+fi
+
+if [ -z "$deviceinfo_dtb" ]; then
+  deviceinfo_dtb="qcom-msm8974pro-fairphone-fp2.dtb"
+  echo "deviceinfo_dtb not set, falling back to $deviceinfo_dtb"
+fi
+
+DTB_SRC="/usr/lib/linux-image-$KVER/qcom"
+for DTB in $deviceinfo_dtb; do
+  if [ -f "$DTB_SRC/$DTB" ]; then
+    cp "$DTB_SRC/$DTB" /boot/
+    echo "Copied DTB: $DTB"
+  else
+    echo "WARNING: $DTB not found in $DTB_SRC, skipping"
+  fi
+done
+
+rm -f "/boot/vmlinuz-$KVER"
+rm -f "/boot/System.map-$KVER"
+rm -f "/boot/config-$KVER"
+echo "Cleaned up versioned boot files for $KVER"
