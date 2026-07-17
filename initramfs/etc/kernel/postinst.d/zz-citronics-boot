@@ -15,6 +15,11 @@ fi
 
 echo "Updating boot partition for kernel $KVER"
 
+if [ ! -f "/boot/vmlinuz-$KVER" ]; then
+  echo "WARNING: /boot/vmlinuz-$KVER not found, skipping boot partition update"
+  exit 0
+fi
+
 if [ "$deviceinfo_arch" = "aarch64" ] || [ "$deviceinfo_arch" = "arm64" ]; then
   cp "/boot/vmlinuz-$KVER" /boot/Image.gz
   echo "Copied vmlinuz-$KVER to /boot/Image.gz"
@@ -28,17 +33,28 @@ if [ -z "$deviceinfo_dtb" ]; then
   echo "deviceinfo_dtb not set, falling back to $deviceinfo_dtb"
 fi
 
-DTB_SRC="/usr/lib/linux-image-$KVER/qcom"
+# Kernel packages ship DTBs either flat in /usr/lib/linux-image-$KVER/ or
+# under a qcom/ subdirectory, depending on the package version.
 for DTB in $deviceinfo_dtb; do
-  if [ -f "$DTB_SRC/$DTB" ]; then
-    cp "$DTB_SRC/$DTB" /boot/
-    echo "Copied DTB: $DTB"
+  DTB_NAME="$(basename "$DTB")"
+  DTB_SRC=""
+  if [ -f "/usr/lib/linux-image-$KVER/$DTB" ]; then
+    DTB_SRC="/usr/lib/linux-image-$KVER/$DTB"
+  elif [ -f "/usr/lib/linux-image-$KVER/qcom/$DTB_NAME" ]; then
+    DTB_SRC="/usr/lib/linux-image-$KVER/qcom/$DTB_NAME"
+  fi
+  if [ -n "$DTB_SRC" ]; then
+    cp "$DTB_SRC" "/boot/$DTB_NAME"
+    echo "Copied DTB: $DTB_SRC"
   else
-    echo "WARNING: $DTB not found in $DTB_SRC, skipping"
+    echo "WARNING: $DTB not found in /usr/lib/linux-image-$KVER, skipping"
   fi
 done
 
-rm -f "/boot/vmlinuz-$KVER"
+# Keep /boot/vmlinuz-$KVER: initramfs generation is deferred to the
+# initramfs-tools trigger, which enumerates kernels via /boot/vmlinuz-*.
+# Deleting it here means no initramfs is ever built (and later
+# update-initramfs runs on the device would find no kernel either).
 rm -f "/boot/System.map-$KVER"
 rm -f "/boot/config-$KVER"
-echo "Cleaned up versioned boot files for $KVER"
+echo "Cleaned up System.map/config for $KVER"
