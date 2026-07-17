@@ -21,12 +21,65 @@ if [ ! -f "/boot/vmlinuz-$KVER" ]; then
 fi
 
 if [ "$deviceinfo_arch" = "aarch64" ] || [ "$deviceinfo_arch" = "arm64" ]; then
-  cp "/boot/vmlinuz-$KVER" /boot/Image.gz
-  echo "Copied vmlinuz-$KVER to /boot/Image.gz"
+  KIMG="Image.gz"
 else
-  cp "/boot/vmlinuz-$KVER" /boot/zImage
-  echo "Copied vmlinuz-$KVER to /boot/zImage"
+  KIMG="zImage"
 fi
+
+# Drop files the boot flow never reads BEFORE generating the initramfs:
+# the package just unpacked System.map/config onto the tightly-sized boot
+# partition and the generated initramfs needs that space.
+rm -f "/boot/System.map-$KVER"
+rm -f "/boot/config-$KVER"
+
+# On an installed, bootable system (zImage/initramfs.gz present), never
+# switch the kernel image without a freshly generated, validated initramfs:
+# a failed `apt install` that leaves the old kernel booting is recoverable,
+# a boot partition with a new kernel and a stale/truncated initramfs is a
+# brick. Two hard-won rules apply here:
+#  - update-initramfs can exit 0 even when the compressor ran out of space,
+#    so success is only ever established by validating the artifact;
+#  - /boot/initramfs.gz (the file the bootloader loads) is only replaced
+#    by a file that passed validation, never before.
+# At image build time /boot has no bootable state yet, so this block is
+# skipped and setup-boot.sh/verify-boot.sh own the boot contract instead.
+if [ -f "/boot/$KIMG" ] || [ -f /boot/initramfs.gz ]; then
+  GENERATED=n
+  PREV_STAMP=$(stat -c %Y /boot/initramfs.gz 2>/dev/null || echo 0)
+  if [ ! -f "/boot/initrd.img-$KVER" ]; then
+    echo "Generating initramfs for $KVER"
+    update-initramfs -c -k "$KVER" || true
+    GENERATED=y
+  fi
+  if [ -f "/boot/initrd.img-$KVER" ]; then
+    if gzip -t "/boot/initrd.img-$KVER" 2>/dev/null; then
+      mv "/boot/initrd.img-$KVER" /boot/initramfs.gz
+      echo "Renamed initrd.img-$KVER to /boot/initramfs.gz"
+    else
+      rm -f "/boot/initrd.img-$KVER"
+      echo "ERROR: generated initramfs for $KVER is truncated (out of space on /boot?)" >&2
+      echo "ERROR: boot partition NOT switched, the previous kernel remains active" >&2
+      exit 1
+    fi
+  elif [ "$GENERATED" = y ]; then
+    # No initrd left behind: either the post-update hook validated and
+    # renamed it (initramfs.gz stamp changed), or generation produced
+    # nothing and initramfs.gz is stale for this kernel.
+    NEW_STAMP=$(stat -c %Y /boot/initramfs.gz 2>/dev/null || echo 0)
+    if [ "$NEW_STAMP" = "$PREV_STAMP" ]; then
+      echo "ERROR: initramfs generation for $KVER produced nothing" >&2
+      echo "ERROR: boot partition NOT switched, the previous kernel remains active" >&2
+      exit 1
+    fi
+  fi
+  if ! gzip -t /boot/initramfs.gz 2>/dev/null; then
+    echo "ERROR: /boot/initramfs.gz is corrupt, boot partition NOT switched" >&2
+    exit 1
+  fi
+fi
+
+cp "/boot/vmlinuz-$KVER" "/boot/$KIMG"
+echo "Copied vmlinuz-$KVER to /boot/$KIMG"
 
 if [ -z "$deviceinfo_dtb" ]; then
   deviceinfo_dtb="qcom-msm8974pro-fairphone-fp2.dtb"
@@ -51,10 +104,6 @@ for DTB in $deviceinfo_dtb; do
   fi
 done
 
-# Keep /boot/vmlinuz-$KVER: initramfs generation is deferred to the
-# initramfs-tools trigger, which enumerates kernels via /boot/vmlinuz-*.
-# Deleting it here means no initramfs is ever built (and later
-# update-initramfs runs on the device would find no kernel either).
-rm -f "/boot/System.map-$KVER"
-rm -f "/boot/config-$KVER"
-echo "Cleaned up System.map/config for $KVER"
+# /boot/vmlinuz-$KVER is kept: update-initramfs enumerates kernels via
+# /boot/vmlinuz-* for future regenerations on the device.
+echo "Boot partition updated for $KVER"

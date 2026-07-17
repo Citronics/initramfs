@@ -1,0 +1,49 @@
+#!/bin/sh
+# Runs from the kernel package preinst (before unpack). The boot partition
+# (~48 MB) cannot hold two kernel+initramfs pairs, so before a new kernel
+# lands: reclaim every versioned leftover that is not part of the current
+# bootable state (zImage/Image.gz + initramfs.gz + DTB stay untouched),
+# then refuse the install if the free space still cannot fit the new
+# kernel and its initramfs. Failing here aborts apt cleanly BEFORE
+# anything changed; running out of space mid-postinst bricks the device.
+set -eu
+
+KVER="${1:-}"
+[ -n "$KVER" ] || exit 0
+
+# Image build: /boot has no bootable state yet — nothing to protect,
+# space is managed by the recipe.
+if [ ! -f /boot/zImage ] && [ ! -f /boot/Image.gz ] && [ ! -f /boot/initramfs.gz ]; then
+  exit 0
+fi
+
+echo "Reclaiming space on /boot before installing kernel $KVER"
+for f in /boot/vmlinuz-* /boot/System.map-* /boot/config-* /boot/initrd.img-*; do
+  [ -e "$f" ] || continue
+  case "$f" in
+    "/boot/vmlinuz-$KVER") continue ;;
+  esac
+  echo "Removing $f"
+  rm -f "$f"
+done
+
+# New vmlinuz (~10 MB) + generated initramfs (~13 MB). The standard layout
+# leaves ~22 MB after reclaim and an upgrade fits with <1 MB to spare, so
+# this check only rejects clearly hopeless cases — a borderline install
+# that still runs out of space is caught by zz-citronics-boot, which then
+# refuses to switch the boot partition (clean apt error, device keeps
+# booting the old kernel).
+NEED_KB=20000
+AVAIL_KB=$(df -Pk /boot | awk 'NR==2 {print $4}')
+# Same-version reinstall: dpkg replaces /boot/vmlinuz-$KVER in place, so
+# its current size is effectively available to the incoming copy.
+if [ -f "/boot/vmlinuz-$KVER" ]; then
+  AVAIL_KB=$((AVAIL_KB + $(du -k "/boot/vmlinuz-$KVER" | cut -f1)))
+fi
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  echo "ERROR: not enough space on /boot for kernel $KVER:" >&2
+  echo "ERROR: ${AVAIL_KB} KB available, ${NEED_KB} KB required (kernel + initramfs)." >&2
+  echo "ERROR: purge unused linux-image packages and retry." >&2
+  exit 1
+fi
+echo "/boot has ${AVAIL_KB} KB free, proceeding"

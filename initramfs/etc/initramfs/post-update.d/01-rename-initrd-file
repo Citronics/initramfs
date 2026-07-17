@@ -3,7 +3,16 @@
 
 set -e
 
-# $1 is the kernel version, $2 is the initramfs path
+# $1 is the kernel version, $2 is the initramfs path.
+# Never replace /boot/initramfs.gz (the file the bootloader loads) with an
+# unvalidated artifact: update-initramfs can report success even when the
+# compressor ran out of space on /boot, leaving a truncated file.
 if [ -n "$2" ] && [ -f "$2" ]; then
-    mv "$2" "/boot/initramfs.gz"
+    if gzip -t "$2" 2>/dev/null; then
+        mv "$2" "/boot/initramfs.gz"
+    else
+        echo "WARNING: $2 is truncated/corrupt, keeping existing /boot/initramfs.gz" >&2
+        rm -f "$2"
+        exit 1
+    fi
 fi
