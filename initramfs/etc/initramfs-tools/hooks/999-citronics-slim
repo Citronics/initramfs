@@ -1,0 +1,38 @@
+#!/bin/sh
+
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# The citronics init uses busybox mdev, never udev — but the stock
+# initramfs-tools udev hook drags in ~18 MB (uncompressed) of machinery:
+# hwdb.bin alone is 13.5 MB. On the ~48 MB boot partition that dead
+# weight is the difference between kernel upgrades fitting or hitting
+# ENOSPC, so strip it after the stock hooks have run.
+echo "[Hook] Stripping udev machinery (init uses mdev)"
+rm -f "${DESTDIR}/usr/lib/udev/hwdb.bin" \
+      "${DESTDIR}/lib/udev/hwdb.bin" \
+      "${DESTDIR}/usr/bin/udevadm" \
+      "${DESTDIR}/bin/udevadm" \
+      "${DESTDIR}/usr/lib/systemd/systemd-udevd" \
+      "${DESTDIR}/lib/systemd/systemd-udevd"
+rm -rf "${DESTDIR}/usr/lib/udev/rules.d" \
+       "${DESTDIR}/lib/udev/rules.d" \
+       "${DESTDIR}/etc/udev"
+# libsystemd-shared exists only for udevd; drop it if nothing else is left
+# that links against it.
+for lib in "${DESTDIR}"/usr/lib/*/systemd/libsystemd-shared-*.so; do
+    [ -e "$lib" ] && rm -f "$lib"
+done
+exit 0
