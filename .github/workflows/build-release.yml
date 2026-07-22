@@ -1,0 +1,78 @@
+name: build-release
+
+# Build and publish the initramfs deb automatically on every push that
+# changes package content, or on demand. Auto-tags the next ".N" suffix
+# on the latest tag (v1.1.2 -> v1.1.2.1 -> v1.1.2.2 ...) so release.sh
+# keeps its tag-driven contract and apt sees an increasing version.
+# Human tags (vX.Y.Z / vX.Y.Z-rcN) keep working as before.
+#
+# After publishing, dispatches update-repo to Citronics/deb-packages
+# (APT_DISPATCH_TOKEN secret), which refreshes the APT repository and in
+# turn triggers the debos image rebuild. Skips gracefully if unset.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'initramfs/**'
+      - 'build.sh'
+      - 'release.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev fakeroot cpio gzip
+
+      - name: Auto-tag next build number
+        run: |
+          git config user.name  "Marc Lainez"
+          git config user.email "marc.lainez@gmail.com"
+          LATEST=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | head -1)
+          if echo "$LATEST" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            BASE="$LATEST"
+          else
+            BASE=$(echo "$LATEST" | sed -E 's/\.[0-9]+$//')
+          fi
+          N=$(git tag | grep -cE "^${BASE}\.[0-9]+$" || true)
+          NEXT="${BASE}.$((N + 1))"
+          git tag "$NEXT"
+          git push origin "$NEXT"
+          echo "Tagged $NEXT (base $BASE)"
+
+      - name: Build and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./release.sh
+
+      - name: Trigger APT repository update
+        env:
+          APT_DISPATCH_TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$APT_DISPATCH_TOKEN" ]; then
+            echo "APT_DISPATCH_TOKEN not set — skipping APT update dispatch"
+            exit 0
+          fi
+          curl -sf -X POST \
+            -H "Authorization: Bearer $APT_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Citronics/deb-packages/dispatches \
+            -d '{"event_type":"update-repo"}'
+          echo "Dispatched update-repo."
