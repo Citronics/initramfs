@@ -20,7 +20,16 @@ esac
 [ -f /usr/share/deviceinfo/deviceinfo ] && . /usr/share/deviceinfo/deviceinfo
 [ -f /etc/deviceinfo ] && . /etc/deviceinfo
 
-if [ -z "$deviceinfo_dtb" ]; then
+# Detect the board variant rather than trusting deviceinfo_dtb to be right (see
+# /usr/share/citronics/detect-dtb.sh). This must use the same logic as
+# /etc/kernel/postinst.d/zz-citronics-boot: if the two disagree, the DTB inside
+# the initramfs is not the DTB the bootloader loads. Without this, an unset or
+# "auto" setting reached the loop below verbatim and produced
+# "[Hook] Warning: DTB not found for auto".
+if [ -f /usr/share/citronics/detect-dtb.sh ]; then
+    . /usr/share/citronics/detect-dtb.sh
+    deviceinfo_dtb="$(citronics_detect_dtb "${version}")"
+elif [ -z "$deviceinfo_dtb" ]; then
     echo "[Hook] Warning: deviceinfo_dtb not set, falling back to FP2 DTB"
     deviceinfo_dtb="qcom-msm8974pro-fairphone-fp2.dtb"
 fi

@@ -81,7 +81,16 @@ fi
 cp "/boot/vmlinuz-$KVER" "/boot/$KIMG"
 echo "Copied vmlinuz-$KVER to /boot/$KIMG"
 
-if [ -z "$deviceinfo_dtb" ]; then
+# Which device tree this board needs is detected, not remembered. The FP2
+# mainboard runs both in a phone and on a battery-less, panel-less carrier
+# board, and the two need different trees; leaving the choice in
+# /etc/deviceinfo means a rig that resets under load, or a phone with a black
+# screen, the first time somebody forgets to change it — or to change it back.
+# An explicit deviceinfo_dtb still wins; "auto" asks for detection explicitly.
+if [ -f /usr/share/citronics/detect-dtb.sh ]; then
+  . /usr/share/citronics/detect-dtb.sh
+  deviceinfo_dtb="$(citronics_detect_dtb "$KVER")"
+elif [ -z "$deviceinfo_dtb" ]; then
   deviceinfo_dtb="qcom-msm8974pro-fairphone-fp2.dtb"
   echo "deviceinfo_dtb not set, falling back to $deviceinfo_dtb"
 fi
@@ -99,10 +108,19 @@ for DTB in $deviceinfo_dtb; do
   if [ -n "$DTB_SRC" ]; then
     cp "$DTB_SRC" "/boot/$DTB_NAME"
     echo "Copied DTB: $DTB_SRC"
+    COPIED_DTB="$DTB_NAME"
   else
     echo "WARNING: $DTB not found in /usr/lib/linux-image-$KVER, skipping"
   fi
 done
+
+# Copying the DTB is only half of it: lk2nd loads whatever extlinux.conf's
+# "fdt" line names, so a correct copy behind a stale fdt line still boots the
+# wrong tree — which is exactly the failure this hook is meant to make
+# impossible. Only lines already pointing at a known FP2 DTB are rewritten.
+if [ -n "${COPIED_DTB:-}" ] && command -v citronics_set_extlinux_fdt >/dev/null 2>&1; then
+  citronics_set_extlinux_fdt "$COPIED_DTB"
+fi
 
 # /boot/vmlinuz-$KVER is kept: update-initramfs enumerates kernels via
 # /boot/vmlinuz-* for future regenerations on the device.
