@@ -16,5 +16,11 @@ VERSION=$(echo "${TAG#v}" | sed 's/-rc/~rc/')
 CONTROL_FILE="./initramfs/DEBIAN/control"
 sed -i "s/^Version: .*/Version: $VERSION/" "$CONTROL_FILE"
 
-dpkg-deb --build initramfs "$PKGNAME-$VERSION.deb"
+# --root-owner-group, or every file keeps the uid/gid of whoever built it: the
+# 1.1.2.1 deb installed /usr/share/citronics/detect-dtb.sh as 1001:1001, the
+# GitHub runner's own user, as seen on the phone. That file is *sourced by root*
+# from /etc/kernel/postinst.d/zz-citronics-boot, so on a machine where uid 1001
+# is an ordinary user, that user could rewrite what root runs on the next kernel
+# upgrade.
+dpkg-deb --root-owner-group --build initramfs "$PKGNAME-$VERSION.deb"
 echo "Built $PKGNAME-$VERSION.deb"
