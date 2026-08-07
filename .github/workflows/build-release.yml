@@ -7,8 +7,12 @@ name: build-release
 # Human tags (vX.Y.Z / vX.Y.Z-rcN) keep working as before.
 #
 # After publishing, dispatches update-repo to Citronics/deb-packages
-# (APT_DISPATCH_TOKEN secret), which refreshes the APT repository and in
-# turn triggers the debos image rebuild. Skips gracefully if unset.
+# (APT_DISPATCH_TOKEN secret), which refreshes the APT repository and in turn
+# triggers the debos image rebuild. That hop is cross-repository, so the
+# automatic GITHUB_TOKEN cannot do it - it is scoped to this repo alone. Without
+# the secret the deb is published to GitHub Releases but apt never learns about
+# it, so no device can install it; the step therefore FAILS rather than skipping,
+# because a release users cannot install is not a release.
 
 on:
   push:
@@ -51,8 +55,19 @@ jobs:
           else
             BASE=$(echo "$LATEST" | sed -E 's/\.[0-9]+$//')
           fi
-          N=$(git tag | grep -cE "^${BASE}\.[0-9]+$" || true)
-          NEXT="${BASE}.$((N + 1))"
+          # Take the HIGHEST existing suffix, not the count of them. The sequence
+          # develops gaps (deleted tags, failed builds), and counting then yields
+          # a number that already exists, so `git tag` dies with "tag already
+          # exists" - the same bug the kernel repo hit at v3.2-rc3.9 when eight
+          # tags existed but the highest was .15. Sort numerically, or .9 would
+          # outrank .15.
+          MAX=$(git tag | grep -E "^${BASE//./\\.}\.[0-9]+$" \
+                        | sed -E 's/.*\.([0-9]+)$/\1/' | sort -n | tail -1)
+          NEXT="${BASE}.$(( ${MAX:-0} + 1 ))"
+          # Belt and braces: never hand an existing tag to `git tag`.
+          while git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; do
+            MAX=$((MAX + 1)); NEXT="${BASE}.$((MAX + 1))"
+          done
           git tag "$NEXT"
           git push origin "$NEXT"
           echo "Tagged $NEXT (base $BASE)"
@@ -67,8 +82,16 @@ jobs:
           APT_DISPATCH_TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
         run: |
           if [ -z "$APT_DISPATCH_TOKEN" ]; then
-            echo "APT_DISPATCH_TOKEN not set — skipping APT update dispatch"
-            exit 0
+            echo "::error title=APT repository was NOT refreshed::The deb is" \
+                 "published as a GitHub release, but apt clients cannot see it" \
+                 "because APT_DISPATCH_TOKEN is unset, so Citronics/deb-packages" \
+                 "was never told to regenerate the index. Fix: create a" \
+                 "fine-grained PAT (resource owner Citronics, repository" \
+                 "Citronics/deb-packages, Contents: read+write) and add it as the" \
+                 "organisation secret APT_DISPATCH_TOKEN for this repo. Until" \
+                 "then, run: gh api -X POST" \
+                 "repos/Citronics/deb-packages/dispatches -f event_type=update-repo"
+            exit 1
           fi
           curl -sf -X POST \
             -H "Authorization: Bearer $APT_DISPATCH_TOKEN" \
