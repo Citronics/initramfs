@@ -30,4 +30,16 @@ if [ "$1" = configure ] && command -v apt-mark >/dev/null &&
 	fi
 	echo "citronics-initramfs: stopped the telnet server inetutils-inetd; remove it with: apt autoremove"
 fi
+
+# An upgrade changes the init scripts and hooks, which only reach the boot
+# partition through a new initramfs. update-initramfs -u has nothing to
+# update (the hook renames initrd.img-* to /boot/initramfs.gz), so the
+# initramfs of the kernel on the boot partition is created again; the
+# post-update hook validates it before it replaces /boot/initramfs.gz.
+if [ "$1" = configure ] && [ -n "$2" ] && [ -s "$STATE" ] && command -v update-initramfs >/dev/null; then
+	KVER=$(cat "$STATE")
+	if [ -d "/lib/modules/$KVER" ]; then
+		update-initramfs -c -k "$KVER" || echo "citronics-initramfs: could not rebuild the initramfs of $KVER" >&2
+	fi
+fi
 exit 0
