@@ -7,6 +7,15 @@ set -e
 # Never replace /boot/initramfs.gz (the file the bootloader loads) with an
 # unvalidated artifact: update-initramfs can report success even when the
 # compressor ran out of space on /boot, leaving a truncated file.
+BOOT_KERNEL=$(cat /var/lib/citronics-initramfs/boot-kernel 2>/dev/null || true)
+# zz-citronics-boot sets CITRONICS_BOOT_KERNEL for the kernel it is switching
+# the boot partition to.
+if [ -n "$1" ] && [ -n "$BOOT_KERNEL" ] && [ "$1" != "$BOOT_KERNEL" ] && \
+   [ "$1" != "${CITRONICS_BOOT_KERNEL:-}" ]; then
+    echo "Kernel $1 is not the one on the boot partition ($BOOT_KERNEL), leaving /boot/initramfs.gz alone"
+    rm -f "$2"
+    exit 0
+fi
 if [ -n "$2" ] && [ -f "$2" ]; then
     if gzip -t "$2" 2>/dev/null; then
         mv "$2" "/boot/initramfs.gz"

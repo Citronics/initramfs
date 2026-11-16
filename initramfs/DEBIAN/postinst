@@ -1,0 +1,20 @@
+#!/bin/sh
+# Record which installed kernel /boot holds, on systems set up before
+# zz-citronics-boot recorded it: the kernel whose /boot/vmlinuz-* copy
+# matches /boot/zImage (or Image.gz).
+set -e
+STATE=/var/lib/citronics-initramfs/boot-kernel
+if [ "$1" = configure ] && [ ! -s "$STATE" ]; then
+	for KIMG in /boot/zImage /boot/Image.gz; do
+		[ -f "$KIMG" ] || continue
+		for v in /boot/vmlinuz-*; do
+			[ -f "$v" ] || continue
+			if cmp -s "$v" "$KIMG"; then
+				mkdir -p "$(dirname "$STATE")"
+				echo "${v#/boot/vmlinuz-}" > "$STATE"
+				break 2
+			fi
+		done
+	done
+fi
+exit 0

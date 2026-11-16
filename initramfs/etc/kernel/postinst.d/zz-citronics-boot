@@ -43,6 +43,10 @@ rm -f "/boot/config-$KVER"
 #    by a file that passed validation, never before.
 # At image build time /boot has no bootable state yet, so this block is
 # skipped and setup-boot.sh/verify-boot.sh own the boot contract instead.
+# The initramfs generated below is for the kernel being switched to; tell
+# 01-rename-initrd-file it may install it.
+export CITRONICS_BOOT_KERNEL="$KVER"
+
 if [ -f "/boot/$KIMG" ] || [ -f /boot/initramfs.gz ]; then
   GENERATED=n
   PREV_STAMP=$(stat -c %Y /boot/initramfs.gz 2>/dev/null || echo 0)
@@ -80,6 +84,13 @@ fi
 
 cp "/boot/vmlinuz-$KVER" "/boot/$KIMG"
 echo "Copied vmlinuz-$KVER to /boot/$KIMG"
+
+# The kernel in /boot/$KIMG: 01-rename-initrd-file only installs an initramfs
+# built for it. With an older-numbered kernel installed after a newer one
+# (6.16 -> 6.12), "update-initramfs -u" picks the highest version, and its
+# initramfs must not end up next to the kernel that actually boots.
+mkdir -p /var/lib/citronics-initramfs
+echo "$KVER" > /var/lib/citronics-initramfs/boot-kernel
 
 # Which device tree this board needs is detected, not remembered. The FP2
 # mainboard runs both in a phone and on a battery-less, panel-less carrier
