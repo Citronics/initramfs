@@ -51,3 +51,10 @@ You can set these in your `extlinux.conf` when creating your buildroot image or 
 
 - [deb-packages](https://github.com/Citronics/deb-packages) — APT repository
 - [debos-citronics](https://github.com/Citronics/debos-citronics) — Image build recipes
+
+## Credits
+
+`init`, `functions.sh` and `etc/mdev.conf` under
+`initramfs/usr/share/citronics-initramfs/` are derived from the
+`postmarketos-initramfs` package of postmarketOS (now nura), GPL-2.0-or-later.
+The rest of this repository is GPL-3.0 (see `LICENSE`).
