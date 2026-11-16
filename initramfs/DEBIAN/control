@@ -4,6 +4,6 @@ Section: base
 Priority: optional
 Architecture: all
 Maintainer: Citronics <info@citronics.eu>
-Depends: initramfs-tools, busybox-static, kpartx, inetutils-telnetd, unudhcpd, parted
+Depends: initramfs-tools, busybox-static, kpartx, unudhcpd, parted
 Description: Custom initramfs-tools hooks and scripts for citronics boards
  This package installs custom hooks, modules, and scripts into initramfs-tools.

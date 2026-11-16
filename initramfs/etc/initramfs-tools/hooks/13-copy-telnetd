@@ -15,9 +15,14 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-echo "[Hook] Add telnetd and its dependencies"
-if [ ! -x /usr/sbin/telnetd ]; then
-    echo "[Hook] Warning: /usr/sbin/telnetd not found, skipping"
+# busybox-static's telnetd, for the debug_console USB shell: no telnet server
+# package in the root filesystem.
+echo "[Hook] Add telnetd (busybox)"
+BUSYBOX=$(command -v busybox || true)
+if [ -z "$BUSYBOX" ]; then
+    echo "[Hook] Warning: busybox not found, skipping telnetd"
     exit 0
 fi
-copy_exec /usr/sbin/telnetd /sbin
+copy_exec "$BUSYBOX" /bin/busybox
+mkdir -p "${DESTDIR}/sbin"
+ln -sf /bin/busybox "${DESTDIR}/sbin/telnetd"
