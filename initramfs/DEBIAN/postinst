@@ -17,4 +17,17 @@ if [ "$1" = configure ] && [ ! -s "$STATE" ]; then
 		done
 	done
 fi
+
+# Versions before 1.1.2.3 pulled in inetutils-telnetd, a telnet server on
+# every interface. Nothing needs it any more: when apt installed it only as
+# that dependency, stop it now; "apt autoremove" removes it.
+if [ "$1" = configure ] && command -v apt-mark >/dev/null &&
+   apt-mark showauto inetutils-inetd 2>/dev/null | grep -qx inetutils-inetd; then
+	if [ -d /run/systemd/system ]; then
+		systemctl disable --now inetutils-inetd.service >/dev/null 2>&1 || true
+	else
+		systemctl disable inetutils-inetd.service >/dev/null 2>&1 || true
+	fi
+	echo "citronics-initramfs: stopped the telnet server inetutils-inetd; remove it with: apt autoremove"
+fi
 exit 0
